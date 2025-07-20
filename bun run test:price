@@ -1,0 +1,7 @@
+
+## Test Structure
+
+- `testReproduceTrace()`: Reproduces the main transaction flow
+- `testPriceCalls()`: Tests the price oracle calls
+- Uses actual mainnet contracts for accurate simulation
+- Includes proper ETH handling and gas estimation
