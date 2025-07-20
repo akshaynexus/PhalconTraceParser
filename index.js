@@ -20,22 +20,50 @@ function generateFoundryTest(traceData, mainAddress) {
     const methodCalls = [];
     
     console.log(`Filtering for calls from address: ${mainAddress}`);
+    console.log(`Total entries in dataMap: ${Object.keys(dataMap).length}`);
+    
+    // Debug: log the structure of the first few entries
+    const firstFew = Object.entries(dataMap).slice(0, 3);
+    firstFew.forEach(([key, value], index) => {
+        console.log(`Entry ${index}: key=${key}, hasInvocation=${!!value.invocation}`);
+        if (value.invocation) {
+            console.log(`  from: ${value.invocation.from}`);
+            console.log(`  to: ${value.invocation.to}`);
+            console.log(`  type: ${value.invocation.type}`);
+            console.log(`  operation: ${value.invocation.operation}`);
+            console.log(`  hasDecodedMethod: ${!!value.invocation.decodedMethod}`);
+            console.log(`  hasDecodedMethodName: ${!!value.invocation.decodedMethod?.name}`);
+        }
+    });
     
     // Process all invocations - be more inclusive about what constitutes a "call"
     Object.entries(dataMap).forEach(([key, value]) => {
-        if (value.invocation && value.invocation.decodedMethod) {
+        if (value.invocation) {
             const invocation = value.invocation;
             const from = invocation.from?.toLowerCase();
             const to = invocation.to?.toLowerCase();
             
-            // Include all invocations from the main address regardless of operation type
+            // Check if this is from our target address
             if (from === mainAddress.toLowerCase()) {
-                const contractAddress = to;
-                const methodName = invocation.decodedMethod.name;
-                const signature = invocation.decodedMethod.signature || `${methodName}()`;
-                const params = invocation.decodedMethod.callParams || [];
+                console.log(`Found invocation from ${invocation.from} to ${to} (type: ${invocation.type})`);
                 
-                console.log(`Found call: ${methodName} from ${invocation.from} to ${to}`);
+                // Try to get method name from various possible fields
+                let methodName = 'unknown';
+                let signature = 'unknown()';
+                let params = [];
+                
+                if (invocation.decodedMethod) {
+                    methodName = invocation.decodedMethod.name || 'unknown';
+                    signature = invocation.decodedMethod.signature || `${methodName}()`;
+                    params = invocation.decodedMethod.callParams || [];
+                } else if (invocation.input && invocation.input.length > 10) {
+                    // Try to extract method signature from input
+                    const methodSig = invocation.input.substring(0, 10);
+                    methodName = `method_${methodSig}`;
+                    signature = `${methodName}()`;
+                }
+                
+                const contractAddress = to;
                 
                 // Track contract interfaces
                 if (!contracts.has(contractAddress)) {
@@ -238,7 +266,7 @@ function main() {
         // Count calls for debugging
         let callCount = 0;
         Object.entries(traceData.dataMap).forEach(([key, value]) => {
-            if (value.invocation && value.invocation.decodedMethod) {
+            if (value.invocation) {
                 const invocation = value.invocation;
                 const from = invocation.from?.toLowerCase();
                 
