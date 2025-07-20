@@ -1,94 +1,103 @@
-#!/usr/bin/env node
 const fs = require('fs');
 const path = require('path');
 
-function generateFoundryTest(traceData) {
+function generateFoundryTest(traceData, mainAddress) {
     const { dataMap } = traceData;
     
-    // Find contract addresses and method calls
+    if (!mainAddress) {
+        // Fallback to finding from root transaction if not provided
+        const rootKey = Object.keys(dataMap).find(key => key === '0' || key === 'root');
+        if (rootKey && dataMap[rootKey].invocation) {
+            mainAddress = dataMap[rootKey].invocation.from;
+        }
+    }
+    
+    if (!mainAddress) {
+        throw new Error('Could not determine main address from trace and none provided');
+    }
+    
     const contracts = new Map();
     const methodCalls = [];
     
-    // Process all invocations
+    // Process all invocations and filter for CALL operations FROM main address
     Object.entries(dataMap).forEach(([key, value]) => {
         if (value.invocation && value.invocation.decodedMethod) {
-            const { decodedMethod, address, fromAddress } = value.invocation;
-            if (decodedMethod.name && decodedMethod.signature) {
-                methodCalls.push({
-                    id: key,
-                    contract: address,
-                    from: fromAddress,
-                    method: decodedMethod.name,
-                    signature: decodedMethod.signature,
-                    params: decodedMethod.callParams || []
-                });
+            const invocation = value.invocation;
+            const from = invocation.from?.toLowerCase();
+            const to = invocation.to?.toLowerCase();
+            
+            // Only include CALL operations FROM the specified main address
+            // Check if this is a CALL operation by checking the operation field
+            const isCallOperation = invocation.operation === 'CALL';
+            
+            if (from === mainAddress.toLowerCase() && isCallOperation) {
+                const contractAddress = to;
+                const methodName = invocation.decodedMethod.name;
+                const signature = invocation.decodedMethod.signature || `${methodName}()`;
+                const params = invocation.decodedMethod.callParams || [];
                 
-                // Track contracts
-                if (!contracts.has(address)) {
-                    contracts.set(address, {
-                        address,
-                        methods: new Set()
-                    });
+                // Track contract interfaces
+                if (!contracts.has(contractAddress)) {
+                    contracts.set(contractAddress, new Set());
                 }
-                contracts.get(address).methods.add(decodedMethod.name);
+                contracts.get(contractAddress).add(signature);
+                
+                // Store method call with proper parameter formatting
+                methodCalls.push({
+                    contractAddress,
+                    methodName,
+                    signature,
+                    params
+                });
             }
         }
     });
     
-    // Generate interface definitions
-    const interfaces = [];
-    contracts.forEach((contract, addr) => {
-        const methods = Array.from(contract.methods);
-        const interfaceName = `I${addr.slice(2, 8)}`;
+    // Generate interfaces
+    let interfaces = '';
+    contracts.forEach((signatures, address) => {
+        const interfaceName = `I${address.slice(2, 8)}`;
+        interfaces += `interface ${interfaceName} {\n`;
         
-        const methodDefs = methods.map(method => {
-            const call = methodCalls.find(c => c.method === method);
-            if (call) {
-                return `    function ${call.signature};`;
-            }
-            return `    function ${method}();`;
-        }).join('\n');
+        Array.from(signatures).forEach(signature => {
+            interfaces += `    function ${signature};\n`;
+        });
         
-        interfaces.push(`interface ${interfaceName} {\n${methodDefs}\n}`);
+        interfaces += '}\n\n';
     });
     
-    // Generate test contract
-    const contractName = 'TraceReproductionTest';
-    const mainAddress =  '0x7d3bd50336f64b7a473c51f54e7f0bd6771cc355';
-    
-    // Generate method calls in order
-    const orderedCalls = methodCalls
-        .sort((a, b) => parseInt(a.id) - parseInt(b.id))
+    // Generate test calls with proper parameter handling
+    let testCalls = '';
+    methodCalls.forEach(({ contractAddress, methodName, signature, params }) => {
+        const interfaceName = `I${contractAddress.slice(2, 8)}`;
         
-        .map(call => {
-            const contractName = `I${call.contract.slice(2, 8)}`;
-            const params = call.params.map(p => {
-                if (p.type === 'address[]') {
-                    return `new address[](1) memory path; path[0] = ${p.value[0]}; path`;
-                }
-                if (p.type === 'uint256') {
-                    return p.value.replace(/,/g, '');
-                }
-                if (p.type === 'address') {
-                    return p.value;
-                }
-                if (p.type === 'bool') {
-                    return p.value.toString();
-                }
-                return '0';
-            }).join(', ');
-            
-            return `        ${contractName}(${call.contract}).${call.method}(${params});`;
-        }).join('\n');
+        // Format parameters based on type
+        const paramValues = params.map((param) => {
+            if (param.type === 'address') {
+                return param.value;
+            } else if (param.type === 'uint256' || param.type === 'uint128' || param.type === 'uint64') {
+                return param.value.replace(/,/g, '');
+            } else if (param.type === 'bool') {
+                return param.value.toString();
+            } else if (param.type === 'address[]') {
+                return `[${param.value.join(', ')}]`;
+            } else if (param.type === 'bytes') {
+                return param.value;
+            } else {
+                return `"${param.value}"`;
+            }
+        }).join(', ');
+        
+        testCalls += `        ${interfaceName}(${contractAddress}).${methodName}(${paramValues});\n`;
+    });
     
-    const testContent = `// SPDX-License-Identifier: UNLICENSED
+    return `// SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.13;
 
 import "forge-std/Test.sol";
 
-${interfaces.join('\n\n')}
-
-contract ${contractName} is Test {
+${interfaces}
+contract TraceReproductionTest is Test {
     address constant MAIN_ADDRESS = ${mainAddress};
     
     function setUp() public {
@@ -101,17 +110,14 @@ contract ${contractName} is Test {
         // Give some ETH to the main address
         vm.deal(MAIN_ADDRESS, 1 ether);
     }
-
+    
     function testReproduceTrace() public {
-${orderedCalls}
-    }
-
+${testCalls}    }
+    
     function testPriceCalls() public view {
         // Add any price/view calls here
     }
 }`;
-
-    return testContent;
 }
 
 function generatePackageJson() {
@@ -125,9 +131,9 @@ function generatePackageJson() {
     "test:price": "forge test --match-test testPriceCalls -vvv",
     "generate": "node index.js"
   },
-  "devDependencies": {
-    "bun": "^1.0.0"
-  }
+  "keywords": ["foundry", "ethereum", "testing", "trace"],
+  "author": "",
+  "license": "ISC"
 }`;
 }
 
@@ -140,9 +146,7 @@ rpc_endpoints = { mainnet = "\${RPC_URL}", arbitrum = "\${ARBITRUM_RPC_URL}" }
 
 [fmt]
 line_length = 120
-tab_width = 4
-bracket_spacing = false
-int_types = "preserve"`;
+tab_width = 4`;
 }
 
 function generateEnvExample() {
@@ -153,7 +157,7 @@ ARBITRUM_RPC_URL=https://arb1.arbitrum.io/rpc`;
 function generateReadme() {
     return `# Trace Reproduction Test
 
-This Foundry test reproduces the main calls from the provided trace.json file. It uses the actual contract addresses and method calls to simulate the transaction flow.
+This Foundry test reproduces the main calls from the provided trace.json file. It uses the actual contract addresses and method calls made by the specified main address in the trace.
 
 ## Setup
 
@@ -162,60 +166,71 @@ This Foundry test reproduces the main calls from the provided trace.json file. I
 bun install
 \`\`\`
 
-2. Copy \`.env.example\` to \`.env\` and fill in your RPC URLs
-
-3. Install Foundry if you haven't already:
+2. Copy \`.env.example\` to \`.env\) and fill in your RPC URLs:
 \`\`\`bash
-curl -L https://foundry.paradigm.xyz | bash
-foundryup
+cp .env.example .env
 \`\`\`
 
-## Running Tests
-
+3. Generate the test with manual address:
 \`\`\`bash
-# Run all tests
-bun run test
+# Using command line argument
+node index.js trace.json 0x1234...5678
 
-# Run specific test
+# Using environment variable
+export MAIN_ADDRESS=0x1234...5678
+node index.js trace.json
+
+# Let it auto-detect from trace
+node index.js trace.json
+\`\`\`
+
+4. Run the test:
+\`\`\`bash
 bun run test:trace
-bun run test:price
-
-# Generate new test from trace.json
-bun run generate
 \`\`\`
 
-## Usage
+## Test Structure
 
-Place your \`trace.json\` in the project root and run \`bun run generate\` to create the Foundry test boilerplate.`;
+- \`testReproduceTrace()\`: Reproduces the exact calls made by the main address in the trace
+- \`testPriceCalls()\`: Placeholder for additional price/view calls`;
 }
 
 function main() {
     const tracePath = process.argv[2] || 'trace.json';
+    let mainAddress = process.argv[3] || process.env.MAIN_ADDRESS;
     
     if (!fs.existsSync(tracePath)) {
         console.error(`Error: ${tracePath} not found`);
-        console.error('Usage: node index.js [path/to/trace.json]');
+        console.error('Usage: node index.js [path/to/trace.json] [main_address]');
+        console.error('Or set MAIN_ADDRESS environment variable');
         process.exit(1);
     }
     
     try {
         const traceData = JSON.parse(fs.readFileSync(tracePath, 'utf8'));
         
-        // Generate files
-        const testContent = generateFoundryTest(traceData);
-        const packageJson = generatePackageJson();
-        const foundryToml = generateFoundryToml();
-        const envExample = generateEnvExample();
-        const readme = generateReadme();
-        
-        // Write files
+        // Generate Foundry test
+        const testContent = generateFoundryTest(traceData, mainAddress);
         fs.writeFileSync('test/TraceReproduction.t.sol', testContent);
+        
+        // Generate package.json
+        const packageJson = generatePackageJson();
         fs.writeFileSync('package.json', packageJson);
+        
+        // Generate foundry.toml
+        const foundryToml = generateFoundryToml();
         fs.writeFileSync('foundry.toml', foundryToml);
+        
+        // Generate .env.example
+        const envExample = generateEnvExample();
         fs.writeFileSync('.env.example', envExample);
+        
+        // Generate README.md
+        const readme = generateReadme();
         fs.writeFileSync('README.md', readme);
         
-        console.log('✅ Generated Foundry test boilerplate:');
+        console.log('✅ Generated Foundry test and configuration files');
+        console.log(`   - Main address: ${mainAddress || 'auto-detected'}`);
         console.log('   - test/TraceReproduction.t.sol');
         console.log('   - package.json');
         console.log('   - foundry.toml');
@@ -223,7 +238,7 @@ function main() {
         console.log('   - README.md');
         
     } catch (error) {
-        console.error('Error processing trace.json:', error.message);
+        console.error('Error processing trace:', error.message);
         process.exit(1);
     }
 }
