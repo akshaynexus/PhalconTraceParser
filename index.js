@@ -197,7 +197,7 @@ bun run test:trace
 
 function main() {
     const tracePath = process.argv[2] || 'trace.json';
-    let mainAddress = process.argv[3] || process.env.MAIN_ADDRESS;
+    let mainAddress = '0x7d3bd50336f64b7a473c51f54e7f0bd6771cc355';
     
     if (!fs.existsSync(tracePath)) {
         console.error(`Error: ${tracePath} not found`);
