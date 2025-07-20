@@ -152,7 +152,7 @@ function generateFoundryToml() {
 src = "src"
 out = "out"
 libs = ["lib"]
-rpc_endpoints = { mainnet = "\${RPC_URL}", arbitrum = "\${ARBITRUM_RPC_URL}" }
+rpc_endpoints = { mainnet = "${RPC_URL}", arbitrum = "${ARBITRUM_RPC_URL}" }
 
 [fmt]
 line_length = 120
@@ -241,12 +241,23 @@ function main() {
         
         console.log('✅ Generated Foundry test and configuration files');
         console.log(`   - Main address: ${mainAddress}`);
-        console.log(`   - Found ${methodCalls.length} calls to include`);
-        console.log('   - test/TraceReproduction.t.sol');
-        console.log('   - package.json');
-        console.log('   - foundry.toml');
-        console.log('   - .env.example');
-        console.log('   - README.md');
+        
+        // Count calls for debugging
+        let callCount = 0;
+        Object.entries(traceData.dataMap).forEach(([key, value]) => {
+            if (value.invocation && value.invocation.decodedMethod) {
+                const invocation = value.invocation;
+                const from = invocation.from?.toLowerCase();
+                const isCall = invocation.operation === 'CALL' || 
+                              invocation.type === 'CALL' || 
+                              !invocation.operation;
+                
+                if (from === mainAddress.toLowerCase() && isCall) {
+                    callCount++;
+                }
+            }
+        });
+        console.log(`   - Found ${callCount} calls to include`);
         
     } catch (error) {
         console.error('Error processing trace:', error.message);
