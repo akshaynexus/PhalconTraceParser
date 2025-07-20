@@ -1,0 +1,5 @@
+# Generate from default trace.json
+bun run generate
+
+# Generate from specific file
+node index.js my-trace.json
