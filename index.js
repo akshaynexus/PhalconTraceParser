@@ -19,23 +19,17 @@ function generateFoundryTest(traceData, mainAddress) {
     const contracts = new Map();
     const methodCalls = [];
     
-    // Debug: log what we're looking for
     console.log(`Filtering for calls from address: ${mainAddress}`);
     
-    // Process all invocations and filter for calls FROM main address
+    // Process all invocations - be more inclusive about what constitutes a "call"
     Object.entries(dataMap).forEach(([key, value]) => {
         if (value.invocation && value.invocation.decodedMethod) {
             const invocation = value.invocation;
             const from = invocation.from?.toLowerCase();
             const to = invocation.to?.toLowerCase();
             
-            // More flexible filtering - accept any call-like operation
-            const isCall = invocation.operation === 'CALL' || 
-                          invocation.type === 'CALL' || 
-                          !invocation.operation || // Default to include if no operation specified
-                          (invocation.operation && invocation.operation !== 'STATICCALL');
-            
-            if (from === mainAddress.toLowerCase() && isCall) {
+            // Include all invocations from the main address regardless of operation type
+            if (from === mainAddress.toLowerCase()) {
                 const contractAddress = to;
                 const methodName = invocation.decodedMethod.name;
                 const signature = invocation.decodedMethod.signature || `${methodName}()`;
@@ -60,7 +54,6 @@ function generateFoundryTest(traceData, mainAddress) {
         }
     });
     
-    // Debug: log what we found
     console.log(`Found ${methodCalls.length} calls to include`);
     
     // Generate interfaces
@@ -152,7 +145,7 @@ function generateFoundryToml() {
 src = "src"
 out = "out"
 libs = ["lib"]
-rpc_endpoints = { mainnet = "${RPC_URL}", arbitrum = "${ARBITRUM_RPC_URL}" }
+rpc_endpoints = { mainnet = "\${RPC_URL}", arbitrum = "\${ARBITRUM_RPC_URL}" }
 
 [fmt]
 line_length = 120
@@ -248,11 +241,8 @@ function main() {
             if (value.invocation && value.invocation.decodedMethod) {
                 const invocation = value.invocation;
                 const from = invocation.from?.toLowerCase();
-                const isCall = invocation.operation === 'CALL' || 
-                              invocation.type === 'CALL' || 
-                              !invocation.operation;
                 
-                if (from === mainAddress.toLowerCase() && isCall) {
+                if (from === mainAddress.toLowerCase()) {
                     callCount++;
                 }
             }
