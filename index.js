@@ -54,11 +54,12 @@ function generateFoundryTest(traceData) {
     
     // Generate test contract
     const contractName = 'TraceReproductionTest';
-    const mainAddress = traceData.dataMap['0']?.invocation?.fromAddress || '0x7d3bd50336f64b7a473c51f54e7f0bd6771cc355';
+    const mainAddress =  '0x7d3bd50336f64b7a473c51f54e7f0bd6771cc355';
     
     // Generate method calls in order
     const orderedCalls = methodCalls
         .sort((a, b) => parseInt(a.id) - parseInt(b.id))
+        
         .map(call => {
             const contractName = `I${call.contract.slice(2, 8)}`;
             const params = call.params.map(p => {
