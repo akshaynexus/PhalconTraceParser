@@ -19,22 +19,29 @@ function generateFoundryTest(traceData, mainAddress) {
     const contracts = new Map();
     const methodCalls = [];
     
-    // Process all invocations and filter for CALL operations FROM main address
+    // Debug: log what we're looking for
+    console.log(`Filtering for calls from address: ${mainAddress}`);
+    
+    // Process all invocations and filter for calls FROM main address
     Object.entries(dataMap).forEach(([key, value]) => {
         if (value.invocation && value.invocation.decodedMethod) {
             const invocation = value.invocation;
             const from = invocation.from?.toLowerCase();
             const to = invocation.to?.toLowerCase();
             
-            // Only include CALL operations FROM the specified main address
-            // Check if this is a CALL operation by checking the operation field
-            const isCallOperation = invocation.operation === 'CALL';
+            // More flexible filtering - accept any call-like operation
+            const isCall = invocation.operation === 'CALL' || 
+                          invocation.type === 'CALL' || 
+                          !invocation.operation || // Default to include if no operation specified
+                          (invocation.operation && invocation.operation !== 'STATICCALL');
             
-            if (from === mainAddress.toLowerCase() && isCallOperation) {
+            if (from === mainAddress.toLowerCase() && isCall) {
                 const contractAddress = to;
                 const methodName = invocation.decodedMethod.name;
                 const signature = invocation.decodedMethod.signature || `${methodName}()`;
                 const params = invocation.decodedMethod.callParams || [];
+                
+                console.log(`Found call: ${methodName} from ${invocation.from} to ${to}`);
                 
                 // Track contract interfaces
                 if (!contracts.has(contractAddress)) {
@@ -52,6 +59,9 @@ function generateFoundryTest(traceData, mainAddress) {
             }
         }
     });
+    
+    // Debug: log what we found
+    console.log(`Found ${methodCalls.length} calls to include`);
     
     // Generate interfaces
     let interfaces = '';
@@ -197,7 +207,7 @@ bun run test:trace
 
 function main() {
     const tracePath = process.argv[2] || 'trace.json';
-    let mainAddress = '0x7d3bd50336f64b7a473c51f54e7f0bd6771cc355';
+    let mainAddress = process.argv[3] || process.env.MAIN_ADDRESS || '0x7d3bd50336f64b7a473c51f54e7f0bd6771cc355';
     
     if (!fs.existsSync(tracePath)) {
         console.error(`Error: ${tracePath} not found`);
@@ -230,7 +240,8 @@ function main() {
         fs.writeFileSync('README.md', readme);
         
         console.log('✅ Generated Foundry test and configuration files');
-        console.log(`   - Main address: ${mainAddress || 'auto-detected'}`);
+        console.log(`   - Main address: ${mainAddress}`);
+        console.log(`   - Found ${methodCalls.length} calls to include`);
         console.log('   - test/TraceReproduction.t.sol');
         console.log('   - package.json');
         console.log('   - foundry.toml');
