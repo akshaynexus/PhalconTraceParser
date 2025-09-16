@@ -5,9 +5,10 @@
   "scripts": {
     "test": "forge test -vvv",
     "test:trace": "forge test --match-test testReproduceTrace -vvv",
-    "test:price": "forge test --match-test testPriceCalls -vvv"
+    "test:price": "forge test --match-test testPriceCalls -vvv",
+    "generate": "node index.js"
   },
-  "devDependencies": {
-    "bun": "^1.0.0"
-  }
+  "keywords": ["foundry", "ethereum", "testing", "trace"],
+  "author": "",
+  "license": "ISC"
 }
