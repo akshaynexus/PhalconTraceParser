@@ -7,8 +7,8 @@
     "build": "forge build",
     "fmt": "forge fmt"
   },
-  "devDependencies": {
-    "forge-std": "^1.7.0"
-  },
-  "license": "MIT"
+  "license": "MIT",
+  "dependencies": {
+    "ethers": "^6.15.0"
+  }
 }
