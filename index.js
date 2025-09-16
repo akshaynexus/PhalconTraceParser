@@ -4,6 +4,7 @@ const crypto = require('crypto');
 const { ethers } = require('ethers');
 const FourByteAPI = require('./fourByteApi');
 const EtherfaceAPI = require('./etherfaceApi');
+const ChainlistAPI = require('./chainlistApi');
 
 // Standard ERC20 ABI for fetching token info
 const ERC20_ABI = [
@@ -20,22 +21,277 @@ const UNISWAP_V2_PAIR_ABI = [
     'function symbol() view returns (string)'
 ];
 
+// Load chain configurations from config.json
+let CHAIN_CONFIGS = {};
+let CONFIG = {};
+
+function loadConfig() {
+    try {
+        const configPath = path.join(__dirname, 'config.json');
+        const configData = fs.readFileSync(configPath, 'utf8');
+        CONFIG = JSON.parse(configData);
+        CHAIN_CONFIGS = CONFIG.chains || {};
+        console.log(`Loaded configuration for ${Object.keys(CHAIN_CONFIGS).length} chains from config.json`);
+    } catch (error) {
+        console.warn(`Failed to load config.json: ${error.message}`);
+        console.warn('Using fallback configuration for Ethereum only');
+
+        // Fallback configuration with minimal Ethereum setup
+        CHAIN_CONFIGS = {
+            ethereum: {
+                name: 'Ethereum',
+                chainId: 1,
+                rpcUrls: ['https://eth.llamarpc.com'],
+                explorerApi: {
+                    baseUrl: 'https://api.etherscan.io/api',
+                    apiKeyEnv: 'ETHERSCAN_API_KEY'
+                },
+                nativeToken: { symbol: 'ETH', decimals: 18 },
+                envVars: ['RPC_URL', 'ETHEREUM_RPC_URL']
+            }
+        };
+        CONFIG = { chains: CHAIN_CONFIGS, defaultChain: 'ethereum' };
+    }
+}
+
+// Load configuration on module initialization
+loadConfig();
+
+// Helper function to get chain config
+function getChainConfig(chainName) {
+    const chain = chainName.toLowerCase();
+    const defaultChain = CONFIG.defaultChain || 'ethereum';
+    return CHAIN_CONFIGS[chain] || CHAIN_CONFIGS[defaultChain] || CHAIN_CONFIGS.ethereum;
+}
+
 // Helper function to detect chain from RPC URL
 function detectChainFromRpc(rpcUrl) {
     const url = rpcUrl.toLowerCase();
-    if (url.includes('base') || url.includes('8453')) {
-        return 'base';
+
+    // Check each chain's RPC URLs
+    for (const [chainName, config] of Object.entries(CHAIN_CONFIGS)) {
+        for (const rpc of config.rpcUrls) {
+            const rpcDomain = rpc.toLowerCase();
+            if (url.includes(rpcDomain.split('://')[1].split('/')[0]) ||
+                url.includes(config.chainId.toString())) {
+                return chainName;
+            }
+        }
     }
+
+    // Fallback detection patterns
+    if (url.includes('base') || url.includes('8453')) return 'base';
+    if (url.includes('arbitrum') || url.includes('42161')) return 'arbitrum';
+    if (url.includes('polygon') || url.includes('137')) return 'polygon';
+    if (url.includes('optimism') || url.includes('10')) return 'optimism';
+
     return 'ethereum';
 }
 
-// Helper function to get default RPC URL for chain
+// Helper function to get RPC URL for chain
+function getRpcUrl(chainName = 'ethereum') {
+    const config = getChainConfig(chainName);
+
+    // Check environment variables first
+    for (const envVar of config.envVars) {
+        if (process.env[envVar]) {
+            return process.env[envVar];
+        }
+    }
+
+    // Return first default RPC URL
+    return config.rpcUrls[0];
+}
+
+// Helper function to get default RPC URL for chain (backwards compatibility)
 function getDefaultRpcUrl(chain = 'ethereum') {
-    const rpcUrls = {
-        ethereum: 'https://eth.llamarpc.com',
-        base: 'https://mainnet.base.org'
+    return getRpcUrl(chain);
+}
+
+// Helper function to get explorer API URL
+function getExplorerApiUrl(chainName, module, action, params = {}) {
+    const config = getChainConfig(chainName);
+    const apiKey = process.env[config.explorerApi.apiKeyEnv] || 'YourApiKeyToken';
+
+    const baseParams = {
+        module,
+        action,
+        apikey: apiKey,
+        ...params
     };
-    return rpcUrls[chain] || rpcUrls.ethereum;
+
+    const queryString = new URLSearchParams(baseParams).toString();
+    return `${config.explorerApi.baseUrl}?${queryString}`;
+}
+
+// Helper function to get supported chains list
+function getSupportedChains() {
+    return Object.keys(CHAIN_CONFIGS);
+}
+
+// Helper function to reload configuration from config.json
+function reloadConfig() {
+    loadConfig();
+    return {
+        chainsLoaded: Object.keys(CHAIN_CONFIGS).length,
+        defaultChain: CONFIG.defaultChain
+    };
+}
+
+// Initialize Chainlist API
+const chainlistApi = new ChainlistAPI();
+
+// Helper function to get enhanced RPC URLs from Chainlist
+async function getEnhancedRpcUrls(chainName, options = {}) {
+    try {
+        const config = getChainConfig(chainName);
+        if (!config) return [];
+
+        // Get RPC URLs from Chainlist API
+        const chainlistUrls = await chainlistApi.getRpcUrlsForChain(config.chainId, {
+            excludeTracking: true,
+            httpsOnly: true,
+            excludeWebsockets: true,
+            excludeApiKeys: true,
+            limit: 10,
+            ...options
+        });
+
+        // Combine with local config URLs
+        const localUrls = config.rpcUrls || [];
+        const allUrls = [...localUrls, ...chainlistUrls];
+
+        // Remove duplicates while preserving order (local URLs first)
+        const uniqueUrls = [...new Set(allUrls)];
+
+        console.log(`Found ${uniqueUrls.length} RPC URLs for ${chainName} (${localUrls.length} local + ${chainlistUrls.length} from chainlist)`);
+        return uniqueUrls;
+
+    } catch (error) {
+        console.warn(`Failed to get enhanced RPC URLs for ${chainName}: ${error.message}`);
+
+        // Fallback to local config
+        const config = getChainConfig(chainName);
+        return config.rpcUrls || [];
+    }
+}
+
+// Helper function to get RPC URL with Chainlist enhancement
+async function getEnhancedRpcUrl(chainName = 'ethereum') {
+    const config = getChainConfig(chainName);
+
+    // Check environment variables first
+    for (const envVar of config.envVars) {
+        if (process.env[envVar]) {
+            return process.env[envVar];
+        }
+    }
+
+    try {
+        // Get enhanced URLs from chainlist
+        const enhancedUrls = await getEnhancedRpcUrls(chainName, { limit: 3 });
+        if (enhancedUrls.length > 0) {
+            return enhancedUrls[0]; // Return first (best) URL
+        }
+    } catch (error) {
+        console.warn(`Chainlist lookup failed for ${chainName}: ${error.message}`);
+    }
+
+    // Fallback to local config
+    return config.rpcUrls[0];
+}
+
+// Helper function to validate RPC URL connectivity
+async function validateRpcUrl(rpcUrl, chainId = null) {
+    try {
+        const provider = new ethers.JsonRpcProvider(rpcUrl);
+
+        // Test basic connectivity
+        const blockNumber = await provider.getBlockNumber();
+
+        // Verify chain ID if provided
+        if (chainId) {
+            const network = await provider.getNetwork();
+            if (Number(network.chainId) !== chainId) {
+                return {
+                    valid: false,
+                    error: `Chain ID mismatch: expected ${chainId}, got ${network.chainId}`,
+                    blockNumber: null
+                };
+            }
+        }
+
+        return {
+            valid: true,
+            error: null,
+            blockNumber: blockNumber
+        };
+
+    } catch (error) {
+        return {
+            valid: false,
+            error: error.message,
+            blockNumber: null
+        };
+    }
+}
+
+// Helper function to find best working RPC URL from a list
+async function findBestRpcUrl(rpcUrls, chainId = null, timeout = 5000) {
+    if (!rpcUrls || rpcUrls.length === 0) {
+        throw new Error('No RPC URLs provided');
+    }
+
+    console.log(`Testing ${rpcUrls.length} RPC URLs for best connectivity...`);
+
+    // Test URLs in parallel with timeout
+    const testPromises = rpcUrls.map(async (url, index) => {
+        try {
+            const timeoutPromise = new Promise((_, reject) => {
+                setTimeout(() => reject(new Error('Timeout')), timeout);
+            });
+
+            const testPromise = validateRpcUrl(url, chainId);
+            const result = await Promise.race([testPromise, timeoutPromise]);
+
+            return {
+                url,
+                index,
+                ...result,
+                latency: Date.now() // Simple latency measure
+            };
+        } catch (error) {
+            return {
+                url,
+                index,
+                valid: false,
+                error: error.message,
+                blockNumber: null,
+                latency: Infinity
+            };
+        }
+    });
+
+    const results = await Promise.all(testPromises);
+
+    // Find valid URLs and sort by latency/preference
+    const validUrls = results
+        .filter(result => result.valid)
+        .sort((a, b) => {
+            // Prefer original order (local config first), then by latency
+            if (a.latency === b.latency) return a.index - b.index;
+            return a.latency - b.latency;
+        });
+
+    if (validUrls.length === 0) {
+        const errors = results.map(r => `${r.url}: ${r.error}`).join(', ');
+        throw new Error(`No working RPC URLs found. Errors: ${errors}`);
+    }
+
+    const bestUrl = validUrls[0];
+    console.log(`Best RPC URL: ${bestUrl.url} (block: ${bestUrl.blockNumber})`);
+
+    return bestUrl.url;
 }
 
 // Load ABI for known contracts
@@ -150,7 +406,8 @@ async function decodeFunctionCall(address, callData, abi, fourByteApi = null, et
 }
 
 // Helper function to fetch transaction details
-async function fetchTransactionDetails(txHash, rpcUrl = 'https://eth.llamarpc.com') {
+async function fetchTransactionDetails(txHash, rpcUrl = null) {
+    rpcUrl = rpcUrl || getRpcUrl('ethereum');
     try {
         const provider = new ethers.JsonRpcProvider(rpcUrl);
         const tx = await provider.getTransaction(txHash);
@@ -168,15 +425,14 @@ async function fetchTransactionDetails(txHash, rpcUrl = 'https://eth.llamarpc.co
 }
 
 // Helper function to fetch token information
-async function fetchTokenInfo(address, rpcUrl = 'https://eth.llamarpc.com') {
+async function fetchTokenInfo(address, rpcUrl = null) {
+    rpcUrl = rpcUrl || getRpcUrl('ethereum');
     const chain = detectChainFromRpc(rpcUrl);
     
-    // Try Basescan API for Base chain (optional, falls back to RPC)
-    if (chain === 'base') {
-        const basescanInfo = await fetchTokenInfoFromBasescan(address);
-        if (basescanInfo) {
-            return basescanInfo;
-        }
+    // Try Explorer API for any supported chain (optional, falls back to RPC)
+    const explorerInfo = await fetchTokenInfoFromExplorer(address, chain);
+    if (explorerInfo) {
+        return explorerInfo;
     }
     
     try {
@@ -223,18 +479,25 @@ async function fetchTokenInfo(address, rpcUrl = 'https://eth.llamarpc.com') {
     return null;
 }
 
-// Helper function to fetch token info from Basescan API
-async function fetchTokenInfoFromBasescan(address) {
+// Helper function to fetch token info from Explorer API (requires API key)
+async function fetchTokenInfoFromExplorer(address, chain = 'ethereum') {
     try {
-        const apiKey = process.env.BASESCAN_API_KEY || 'YourApiKeyToken';
-        const basescanApiUrl = `https://api.basescan.org/api?module=token&action=tokeninfo&contractaddress=${address}&apikey=${apiKey}`;
-        
-        // Note: In production, you would need a real Basescan API key
-        // For now, we'll just use RPC calls since API might not be available
-        console.log(`Would fetch from Basescan: ${basescanApiUrl}`);
-        
-        // TODO: Implement actual HTTP request to Basescan API
-        // const response = await fetch(basescanApiUrl);
+        const config = getChainConfig(chain);
+        const apiKey = process.env[config.explorerApi.apiKeyEnv];
+
+        if (!apiKey || apiKey === 'YourApiKeyToken') {
+            console.log(`No API key found for ${config.name} explorer, skipping API call`);
+            return null;
+        }
+
+        const explorerApiUrl = getExplorerApiUrl(chain, 'token', 'tokeninfo', {
+            contractaddress: address
+        });
+
+        console.log(`Fetching token info from ${config.name} explorer: ${explorerApiUrl}`);
+
+        // TODO: Implement actual HTTP request to Explorer API
+        // const response = await fetch(explorerApiUrl);
         // const data = await response.json();
         // if (data.status === '1' && data.result) {
         //     return {
@@ -242,16 +505,17 @@ async function fetchTokenInfoFromBasescan(address) {
         //         symbol: data.result.symbol
         //     };
         // }
-        
+
         return null;
     } catch (error) {
-        console.warn(`Basescan API request failed: ${error.message}`);
+        console.warn(`${getChainConfig(chain).name} Explorer API request failed: ${error.message}`);
         return null;
     }
 }
 
 // Helper function to fetch basic ERC20 info
-async function fetchERC20Info(address, rpcUrl = 'https://eth.llamarpc.com') {
+async function fetchERC20Info(address, rpcUrl = null) {
+    rpcUrl = rpcUrl || getRpcUrl('ethereum');
     try {
         const provider = new ethers.JsonRpcProvider(rpcUrl);
         const contract = new ethers.Contract(address, ERC20_ABI, provider);
@@ -1266,7 +1530,8 @@ function parseParameterTypes(paramStr) {
     return params;
 }
 
-async function generateFoundryTest(traceData, mainAddress, blockNumber = null, rpcUrl = 'https://eth.llamarpc.com') {
+async function generateFoundryTest(traceData, mainAddress, blockNumber = null, rpcUrl = null) {
+    rpcUrl = rpcUrl || getRpcUrl('ethereum');
     const chain = detectChainFromRpc(rpcUrl);
     const { dataMap } = traceData;
     
@@ -2013,22 +2278,55 @@ function generatePackageJson() {
 }
 
 function generateFoundryToml() {
+    const supportedChains = getSupportedChains();
+    const rpcEndpoints = supportedChains.map(chain => {
+        const config = getChainConfig(chain);
+        const envVar = config.envVars[0]; // Use first env var
+        return `${chain} = "\${${envVar}}"`;
+    }).join(', ');
+
     return `[profile.default]
 src = "src"
+test = "test"
 out = "out"
 libs = ["lib"]
-rpc_endpoints = { mainnet = "\${RPC_URL}", arbitrum = "\${ARBITRUM_RPC_URL}", base = "\${BASE_RPC_URL}" }
+rpc_endpoints = { ${rpcEndpoints} }
 
 [fmt]
 line_length = 120
-tab_width = 4`;
+tab_width = 4
+bracket_spacing = true
+int_types = "long"`;
 }
 
 function generateEnvExample() {
-    return `RPC_URL=https://mainnet.infura.io/v3/YOUR_INFURA_KEY
-ARBITRUM_RPC_URL=https://arb1.arbitrum.io/rpc
-BASE_RPC_URL=https://mainnet.base.org
-BASESCAN_API_KEY=YourBasescanApiKey
+    const supportedChains = getSupportedChains();
+    const envVars = [];
+    const apiKeys = [];
+
+    supportedChains.forEach(chain => {
+        const config = getChainConfig(chain);
+
+        // Add RPC URL env vars
+        config.envVars.forEach(envVar => {
+            const defaultUrl = config.rpcUrls[0].replace('YOUR_INFURA_KEY', 'YOUR_INFURA_KEY');
+            envVars.push(`${envVar}=${defaultUrl}`);
+        });
+
+        // Add API key env vars
+        const apiKeyEnv = config.explorerApi.apiKeyEnv;
+        if (!apiKeys.some(key => key.startsWith(apiKeyEnv))) {
+            apiKeys.push(`${apiKeyEnv}=Your${config.name.replace(' ', '')}ApiKey`);
+        }
+    });
+
+    return `# RPC URLs for supported chains
+${envVars.join('\n')}
+
+# Explorer API Keys (optional)
+${apiKeys.join('\n')}
+
+# Default chain to use
 CHAIN=ethereum`;
 }
 
@@ -2056,12 +2354,14 @@ cp .env.example .env
 
 3. Set your target chain (optional):
 \`\`\`bash
-# For Ethereum (default)
-export CHAIN=ethereum
+# Supported chains: ${getSupportedChains().join(', ')}
+export CHAIN=ethereum  # Default
 
-# For Base chain
+# Examples for other chains:
 export CHAIN=base
-export BASE_RPC_URL=https://mainnet.base.org
+export CHAIN=arbitrum
+export CHAIN=polygon
+export CHAIN=optimism
 \`\`\`
 
 4. Generate the test with manual address:
@@ -2155,7 +2455,8 @@ async function main() {
         }
         
         // Detect chain and set appropriate RPC URL
-        let rpcUrl = process.env.RPC_URL || 'https://eth.llamarpc.com';
+        let chainName = process.env.CHAIN || 'ethereum';
+        let rpcUrl = getRpcUrl(chainName);
         
         // Try to fetch transaction details if tx hash is available
         let txDetails = null;
@@ -2188,10 +2489,12 @@ async function main() {
                 blockNumber = null;
             }
         }
-        
-        // Check if we should use Base chain
-        if (process.env.BASE_RPC_URL || process.env.CHAIN === 'base') {
-            rpcUrl = process.env.BASE_RPC_URL || 'https://mainnet.base.org';
+
+        // Update chain detection from RPC URL if needed
+        const detectedChain = detectChainFromRpc(rpcUrl);
+        if (detectedChain !== chainName) {
+            chainName = detectedChain;
+            console.log(`Detected chain: ${chainName} from RPC URL`);
         }
         
         // Generate Foundry test
@@ -2245,4 +2548,21 @@ if (require.main === module) {
     });
 }
 
-module.exports = { generateFoundryTest };
+module.exports = {
+    generateFoundryTest,
+    getSupportedChains,
+    getChainConfig,
+    getRpcUrl,
+    getDefaultRpcUrl,
+    getExplorerApiUrl,
+    detectChainFromRpc,
+    loadConfig,
+    reloadConfig,
+    getEnhancedRpcUrls,
+    getEnhancedRpcUrl,
+    validateRpcUrl,
+    findBestRpcUrl,
+    chainlistApi,
+    CHAIN_CONFIGS,
+    CONFIG
+};

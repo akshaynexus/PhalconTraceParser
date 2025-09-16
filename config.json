@@ -1,0 +1,132 @@
+{
+  "chains": {
+    "ethereum": {
+      "name": "Ethereum",
+      "chainId": 1,
+      "rpcUrls": [
+        "https://eth.llamarpc.com",
+        "https://rpc.ankr.com/eth",
+        "https://ethereum.publicnode.com"
+      ],
+      "explorerApi": {
+        "baseUrl": "https://api.etherscan.io/api",
+        "apiKeyEnv": "ETHERSCAN_API_KEY"
+      },
+      "nativeToken": {
+        "symbol": "ETH",
+        "decimals": 18
+      },
+      "envVars": ["RPC_URL", "ETHEREUM_RPC_URL"]
+    },
+    "base": {
+      "name": "Base",
+      "chainId": 8453,
+      "rpcUrls": [
+        "https://mainnet.base.org",
+        "https://base.llamarpc.com",
+        "https://base-mainnet.public.blastapi.io"
+      ],
+      "explorerApi": {
+        "baseUrl": "https://api.basescan.org/api",
+        "apiKeyEnv": "BASESCAN_API_KEY"
+      },
+      "nativeToken": {
+        "symbol": "ETH",
+        "decimals": 18
+      },
+      "envVars": ["BASE_RPC_URL"]
+    },
+    "arbitrum": {
+      "name": "Arbitrum One",
+      "chainId": 42161,
+      "rpcUrls": [
+        "https://arb1.arbitrum.io/rpc",
+        "https://arbitrum.llamarpc.com",
+        "https://arbitrum-one.publicnode.com"
+      ],
+      "explorerApi": {
+        "baseUrl": "https://api.arbiscan.io/api",
+        "apiKeyEnv": "ARBISCAN_API_KEY"
+      },
+      "nativeToken": {
+        "symbol": "ETH",
+        "decimals": 18
+      },
+      "envVars": ["ARBITRUM_RPC_URL"]
+    },
+    "polygon": {
+      "name": "Polygon",
+      "chainId": 137,
+      "rpcUrls": [
+        "https://polygon-rpc.com",
+        "https://polygon.llamarpc.com",
+        "https://polygon-mainnet.public.blastapi.io"
+      ],
+      "explorerApi": {
+        "baseUrl": "https://api.polygonscan.com/api",
+        "apiKeyEnv": "POLYGONSCAN_API_KEY"
+      },
+      "nativeToken": {
+        "symbol": "MATIC",
+        "decimals": 18
+      },
+      "envVars": ["POLYGON_RPC_URL"]
+    },
+    "optimism": {
+      "name": "Optimism",
+      "chainId": 10,
+      "rpcUrls": [
+        "https://mainnet.optimism.io",
+        "https://optimism.llamarpc.com",
+        "https://optimism-mainnet.public.blastapi.io"
+      ],
+      "explorerApi": {
+        "baseUrl": "https://api-optimistic.etherscan.io/api",
+        "apiKeyEnv": "OPTIMISM_API_KEY"
+      },
+      "nativeToken": {
+        "symbol": "ETH",
+        "decimals": 18
+      },
+      "envVars": ["OPTIMISM_RPC_URL"]
+    },
+    "bsc": {
+      "name": "BNB Smart Chain",
+      "chainId": 56,
+      "rpcUrls": [
+        "https://bsc-dataseed.binance.org",
+        "https://bsc.publicnode.com",
+        "https://bsc-mainnet.public.blastapi.io"
+      ],
+      "explorerApi": {
+        "baseUrl": "https://api.bscscan.com/api",
+        "apiKeyEnv": "BSCSCAN_API_KEY"
+      },
+      "nativeToken": {
+        "symbol": "BNB",
+        "decimals": 18
+      },
+      "envVars": ["BSC_RPC_URL", "BNB_RPC_URL"]
+    },
+    "avalanche": {
+      "name": "Avalanche",
+      "chainId": 43114,
+      "rpcUrls": [
+        "https://api.avax.network/ext/bc/C/rpc",
+        "https://avalanche.public-rpc.com",
+        "https://avalanche-mainnet.public.blastapi.io/ext/bc/C/rpc"
+      ],
+      "explorerApi": {
+        "baseUrl": "https://api.snowtrace.io/api",
+        "apiKeyEnv": "SNOWTRACE_API_KEY"
+      },
+      "nativeToken": {
+        "symbol": "AVAX",
+        "decimals": 18
+      },
+      "envVars": ["AVALANCHE_RPC_URL", "AVAX_RPC_URL"]
+    }
+  },
+  "defaultChain": "ethereum",
+  "version": "1.0.0"
+}
