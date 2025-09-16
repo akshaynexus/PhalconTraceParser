@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeEach, afterEach } from 'bun:test';
-import ChainlistAPI from '../../chainlistApi.js';
+import ChainlistAPI from '../../api_helpers/chainlistApi.js';
 
 describe('ChainlistAPI', () => {
     let api;
