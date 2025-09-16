@@ -12,8 +12,8 @@ const TraceParser = require('./lib/traceParser');
 const FoundryGenerator = require('./lib/foundryGenerator');
 
 // Import API classes
-const FourByteAPI = require('./fourByteApi');
-const EtherfaceAPI = require('./etherfaceApi');
+const FourByteAPI = require('./api_helpers/fourByteApi');
+const EtherfaceAPI = require('./api_helpers/etherfaceApi');
 
 /**
  * Main Application Class

@@ -2,9 +2,9 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { ethers } = require('ethers');
-const FourByteAPI = require('./fourByteApi');
-const EtherfaceAPI = require('./etherfaceApi');
-const ChainlistAPI = require('./chainlistApi');
+const FourByteAPI = require('./api_helpers/fourByteApi');
+const EtherfaceAPI = require('./api_helpers/etherfaceApi');
+const ChainlistAPI = require('./api_helpers/chainlistApi');
 
 // Standard ERC20 ABI for fetching token info
 const ERC20_ABI = [
