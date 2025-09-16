@@ -1,17 +1,13 @@
 # Trace Reproduction Test
 
-This Foundry test reproduces the main calls from the provided trace.json file. It uses the actual contract addresses and method calls made by the specified main address in the trace.
-
-## Supported Chains
-
-- **Ethereum Mainnet**: Default chain with full DeFi protocol support
-- **Base Chain**: Optimized for Base ecosystem with Aerodrome DEX and Base-native tokens
+This project reproduces a transaction trace using Foundry for testing and development.
 
 ## Setup
 
-1. Install dependencies:
+1. Install Foundry:
 ```bash
-bun install
+curl -L https://foundry.paradigm.xyz | bash
+foundryup
 ```
 
 2. Copy `.env.example` to `.env` and fill in your RPC URLs:
@@ -21,44 +17,59 @@ cp .env.example .env
 
 3. Set your target chain (optional):
 ```bash
-# For Ethereum (default)
-export CHAIN=ethereum
+# Supported chains: ethereum, base, arbitrum, polygon, optimism, bsc, avalanche
+export CHAIN=ethereum  # Default
 
-# For Base chain
+# Examples for other chains:
 export CHAIN=base
-export BASE_RPC_URL=https://mainnet.base.org
+export CHAIN=arbitrum
+export CHAIN=polygon
+export CHAIN=optimism
 ```
 
 4. Generate the test with manual address:
 ```bash
 # Using command line argument
-node index.js trace.json 0x1234...5678
+node index.js path/to/trace.json 0xYourMainAddress
 
-# Using environment variable
-export MAIN_ADDRESS=0x1234...5678
-node index.js trace.json
-
-# Let it auto-detect from trace
-node index.js trace.json
+# Or set in environment
+export MAIN_ADDRESS=0xYourMainAddress
+node index.js path/to/trace.json
 ```
 
-5. Run the test:
+## Running Tests
+
+```bash
+# Install dependencies
+forge install
+
+# Run tests
+forge test
+
+# Run with verbose output
+forge test -vvv
+```
+
+## Test Options
+
 ```bash
 # Run on Ethereum mainnet
-forge test --match-test testReproduceTrace -vvv --fork-url $RPC_URL
+forge test --match-test testReproduceTrace -vvv --fork-url \$RPC_URL
 
 # Run on Base chain
-forge test --match-test testReproduceTrace -vvv --fork-url $BASE_RPC_URL
+forge test --match-test testReproduceTrace -vvv --fork-url \$BASE_RPC_URL
 ```
 
-## Test Structure
+## Generated Files
 
-- `testReproduceTrace()`: Reproduces the exact calls made by the main address in the trace
-- `testPriceCalls()`: Placeholder for additional price/view calls
+- `test/TraceReproduction.t.sol` - Main test contract
+- `foundry.toml` - Foundry configuration
+- `.env.example` - Environment variables template
+- `package.json` - Project metadata
 
-## Base Chain Features
+## Notes
 
-- Support for Base-native tokens (USDC, DAI, WETH, cbETH, etc.)
-- Aerodrome DEX integration
-- Uniswap V3 on Base
-- Basescan API integration (when API key provided)
+- The test reproduces the exact sequence of calls from the original trace
+- All addresses are labeled and organized for easy understanding
+- Flash loan callbacks are automatically detected and implemented
+- Token information is fetched and included as comments

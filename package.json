@@ -1,17 +1,14 @@
 {
   "name": "trace-reproduction",
   "version": "1.0.0",
-  "description": "Foundry test to reproduce Ethereum transaction flow from trace.json",
+  "description": "Reproduced transaction trace using Foundry",
   "scripts": {
-    "test": "forge test -vvv",
-    "test:trace": "forge test --match-test testReproduceTrace -vvv",
-    "test:price": "forge test --match-test testPriceCalls -vvv",
-    "generate": "node index.js"
+    "test": "forge test",
+    "build": "forge build",
+    "fmt": "forge fmt"
   },
-  "keywords": ["foundry", "ethereum", "testing", "trace"],
-  "author": "",
-  "license": "ISC",
-  "dependencies": {
-    "ethers": "^6.15.0"
-  }
+  "devDependencies": {
+    "forge-std": "^1.7.0"
+  },
+  "license": "MIT"
 }
