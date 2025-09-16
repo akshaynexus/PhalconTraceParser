@@ -3,6 +3,7 @@ const path = require('path');
 const crypto = require('crypto');
 const { ethers } = require('ethers');
 const FourByteAPI = require('./fourByteApi');
+const EtherfaceAPI = require('./etherfaceApi');
 
 // Standard ERC20 ABI for fetching token info
 const ERC20_ABI = [
@@ -66,8 +67,39 @@ function getFunctionSelector(signature) {
     return '0x' + crypto.createHash('keccak256').update(signature).digest('hex').slice(0, 8);
 }
 
-// Decode function call using ABI or 4byte API
-async function decodeFunctionCall(address, callData, abi, fourByteApi = null) {
+// Lookup function signature with fallback from 4byte to Etherface
+async function lookupFunctionSignatureWithFallback(selector, fourByteApi, etherfaceApi) {
+    // Try 4byte API first
+    if (fourByteApi) {
+        try {
+            const fourByteResult = await fourByteApi.lookupFunctionSignature(selector);
+            if (fourByteResult) {
+                console.log(`Found signature for ${selector} in 4byte.directory`);
+                return fourByteResult;
+            }
+        } catch (error) {
+            console.warn(`4byte API failed for ${selector}: ${error.message}`);
+        }
+    }
+
+    // Fallback to Etherface API
+    if (etherfaceApi) {
+        try {
+            const etherfaceResult = await etherfaceApi.lookupFunctionSignature(selector);
+            if (etherfaceResult) {
+                console.log(`Found signature for ${selector} in Etherface (fallback)`);
+                return etherfaceResult;
+            }
+        } catch (error) {
+            console.warn(`Etherface API failed for ${selector}: ${error.message}`);
+        }
+    }
+
+    return null;
+}
+
+// Decode function call using ABI or 4byte API with Etherface fallback
+async function decodeFunctionCall(address, callData, abi, fourByteApi = null, etherfaceApi = null) {
     if (!callData || callData.length < 10) return null;
     
     const selector = callData.slice(0, 10);
@@ -90,12 +122,12 @@ async function decodeFunctionCall(address, callData, abi, fourByteApi = null) {
         }
     }
     
-    // Fallback to 4byte API
-    if (fourByteApi) {
+    // Fallback to 4byte API with Etherface fallback
+    if (fourByteApi || etherfaceApi) {
         try {
-            const apiResult = await fourByteApi.lookupFunctionSignature(selector);
+            const apiResult = await lookupFunctionSignatureWithFallback(selector, fourByteApi, etherfaceApi);
             if (apiResult) {
-                // Convert 4byte API result to our format
+                // Convert API result to our format
                 const inputs = apiResult.parameters.map((param, index) => ({
                     type: param,
                     name: `param${index}`
@@ -462,7 +494,7 @@ function detectCallbackType(methodName, contractAddress, callData) {
 }
 
 // Helper function to extract calls within flashloan range that should be in callback
-async function extractCallsInFlashloanRange(dataMap, startId, endId, mainAddress, contracts, addressRegistry, addressCounter, fourByteApi) {
+async function extractCallsInFlashloanRange(dataMap, startId, endId, mainAddress, contracts, addressRegistry, addressCounter, fourByteApi, etherfaceApi) {
     const callsInCallback = [];
     
     // Look for calls from the main address that happen within the flashloan range
@@ -492,7 +524,7 @@ async function extractCallsInFlashloanRange(dataMap, startId, endId, mainAddress
                 } else if (invocation.selector) {
                     // Try to decode using ABI first
                     const abi = invocation.to ? loadContractABI(invocation.to) : null;
-                    const decodedCall = abi && invocation.callData ? await decodeFunctionCall(invocation.to, invocation.callData, abi, fourByteApi) : null;
+                    const decodedCall = abi && invocation.callData ? await decodeFunctionCall(invocation.to, invocation.callData, abi, fourByteApi, etherfaceApi) : null;
                     
                     if (decodedCall) {
                         // Successfully decoded using ABI
@@ -521,11 +553,11 @@ async function extractCallsInFlashloanRange(dataMap, startId, endId, mainAddress
                             }];
                         }
                     } else {
-                        // Try 4byte API if we have a selector but no ABI match
+                        // Try 4byte API with Etherface fallback if we have a selector but no ABI match
                         let apiDecoded = false;
-                        if (fourByteApi && invocation.selector) {
+                        if ((fourByteApi || etherfaceApi) && invocation.selector) {
                             try {
-                                const apiResult = await fourByteApi.lookupFunctionSignature(invocation.selector);
+                                const apiResult = await lookupFunctionSignatureWithFallback(invocation.selector, fourByteApi, etherfaceApi);
                                 if (apiResult) {
                                     methodName = apiResult.functionName;
                                     signature = apiResult.textSignature;
@@ -1252,7 +1284,8 @@ async function generateFoundryTest(traceData, mainAddress, blockNumber = null, r
     
     // Initialize 4byte API for function signature lookups
     const fourByteApi = new FourByteAPI();
-    console.log('Initialized 4byte.directory API for function signature lookups');
+    const etherfaceApi = new EtherfaceAPI();
+    console.log('Initialized 4byte.directory API and Etherface API for function signature lookups');
     
     const contracts = new Map();
     const methodCalls = [];
@@ -1444,7 +1477,7 @@ async function generateFoundryTest(traceData, mainAddress, blockNumber = null, r
                 } else if (invocation.selector) {
                     // Try to decode using ABI first
                     const abi = invocation.to ? loadContractABI(invocation.to) : null;
-                    const decodedCall = abi && invocation.callData ? await decodeFunctionCall(invocation.to, invocation.callData, abi, fourByteApi) : null;
+                    const decodedCall = abi && invocation.callData ? await decodeFunctionCall(invocation.to, invocation.callData, abi, fourByteApi, etherfaceApi) : null;
                     
                     if (decodedCall) {
                         // Successfully decoded using ABI
@@ -1473,11 +1506,11 @@ async function generateFoundryTest(traceData, mainAddress, blockNumber = null, r
                             }];
                         }
                     } else {
-                        // Try 4byte API if we have a selector but no ABI match
+                        // Try 4byte API with Etherface fallback if we have a selector but no ABI match
                         let apiDecoded = false;
-                        if (fourByteApi && invocation.selector) {
+                        if ((fourByteApi || etherfaceApi) && invocation.selector) {
                             try {
-                                const apiResult = await fourByteApi.lookupFunctionSignature(invocation.selector);
+                                const apiResult = await lookupFunctionSignatureWithFallback(invocation.selector, fourByteApi, etherfaceApi);
                                 if (apiResult) {
                                     methodName = apiResult.functionName;
                                     signature = apiResult.textSignature;
@@ -1682,7 +1715,7 @@ async function generateFoundryTest(traceData, mainAddress, blockNumber = null, r
     
     // Process callback ranges to extract calls within them  
     for (const range of callbackRanges) {
-        const callbackData = await extractCallsInFlashloanRange(dataMap, range.startId, range.endId, mainAddress, contracts, addressRegistry, addressCounter, fourByteApi);
+        const callbackData = await extractCallsInFlashloanRange(dataMap, range.startId, range.endId, mainAddress, contracts, addressRegistry, addressCounter, fourByteApi, etherfaceApi);
         if (callbackData && callbackData.length > 0) {
             if (range.type === 'flashloan') {
                 // Determine flashloan callback type based on contract address

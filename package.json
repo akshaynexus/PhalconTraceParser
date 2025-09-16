@@ -10,5 +10,8 @@
   },
   "keywords": ["foundry", "ethereum", "testing", "trace"],
   "author": "",
-  "license": "ISC"
+  "license": "ISC",
+  "dependencies": {
+    "ethers": "^6.15.0"
+  }
 }
