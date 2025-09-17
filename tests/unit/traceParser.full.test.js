@@ -485,8 +485,8 @@ describe('TraceParser - Full Coverage', () => {
             expect(formatted).toContain('[');
             expect(formatted).toContain(']');
             // The addresses will be checksummed
-            expect(formatted).toContain('0xAAAA567890123456789012345678901234567890');
-            expect(formatted).toContain('0xbBBb567890123456789012345678901234567890');
+            expect(formatted).toContain('0xaAaA567890123456789012345678901234567890');
+            expect(formatted).toContain('0xbBbB567890123456789012345678901234567890');
         });
 
         test('should handle string type without 0x prefix', () => {
@@ -566,7 +566,7 @@ describe('TraceParser - Full Coverage', () => {
                 params, new Map(), '0x0000000000000000000000000000000000000000'
             );
 
-            expect(formatted).toContain('0xAAAA567890123456789012345678901234567890');
+            expect(formatted).toContain('0xaAaA567890123456789012345678901234567890');
             expect(formatted).toContain('1000');
             expect(formatted).toContain(','); // Should contain comma separator
         });

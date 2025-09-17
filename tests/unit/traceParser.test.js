@@ -105,7 +105,7 @@ describe('TraceParser', () => {
             '0x0987654321098765432109876543210987654321',
             '0xfedcba'
         );
-        expect(balancerCallback).toBe('aave_flashloan'); // The actual implementation groups these together
+        expect(balancerCallback).toBe('balancer_flashloan'); // Balancer has its own callback type
 
         const unknownCallback = traceParser.detectCallbackType(
             'unknownMethod',
