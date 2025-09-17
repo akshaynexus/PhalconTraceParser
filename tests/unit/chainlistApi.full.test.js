@@ -276,7 +276,10 @@ describe('ChainlistAPI - Full Coverage', () => {
                 rpc: ['wss://websocket-rpc.com', 'https://http-rpc.com']
             };
 
-            const filtered = api.filterRpcUrls(chainData, { excludeWebsockets: false });
+            const filtered = api.filterRpcUrls(chainData, {
+                excludeWebsockets: false,
+                httpsOnly: false // Also need to allow non-HTTPS since wss:// isn't https://
+            });
             expect(filtered).toContain('wss://websocket-rpc.com');
             expect(filtered).toContain('https://http-rpc.com');
         });
